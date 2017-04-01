@@ -44,14 +44,15 @@ class LSTMLM(object):
         batch_size = self.batch_size
         step_size = self.step_size
 
+        # with tf.variable_scope(tf.get_variable_scope()):
         with tf.device(device), tf.name_scope(mode), tf.variable_scope("LSTMLM", reuse=reuse):
             # INPUTS and TARGETS
-            self.inputs  = tf.placeholder(tf.int32, [batch_size, step_size, 2]) 
+            self.inputs = tf.placeholder(tf.int32, [batch_size, step_size, 2])
             self.targets = tf.placeholder(tf.int32, [batch_size, step_size, 2])
 
             # Inititial state
-            self.initial_state = tf.placeholder(tf.float32, 
-                [batch_size, lstm_size * 2 * lstm_layers])
+            self.initial_state = tf.placeholder(tf.float32,
+                                                [batch_size, lstm_size * 2 * lstm_layers])
 
             # WORD EMBEDDING
             stdv = np.sqrt(1. / vocab_size)
@@ -60,16 +61,16 @@ class LSTMLM(object):
             self.word_embedding_c = tf.get_variable("word_embedding_c", [
                 vocab_size, embed_dim], initializer=tf.random_uniform_initializer(-stdv, stdv))
 
-            #input_r = tf.reshape(inputs[:,0], [batch_size, step_size])
-            #pdb.set_trace()
-            input_c = self.inputs[:,:,1]
+            # input_r = tf.reshape(inputs[:,0], [batch_size, step_size])
+            # pdb.set_trace()
+            input_c = self.inputs[:, :, 1]
 
-            #input_r = tf.nn.embedding_lookup(self.word_embedding_r, input_r)
+            # input_r = tf.nn.embedding_lookup(self.word_embedding_r, input_r)
             input_c = tf.nn.embedding_lookup(self.word_embedding_c, input_c)
 
-            #inputs = tf.nn.embedding_lookup(self.word_embedding, self.inputs)
+            # inputs = tf.nn.embedding_lookup(self.word_embedding, self.inputs)
 
-            # INPUT DROPOUT 
+            # INPUT DROPOUT
             if self.is_training and self.config.dropout_prob > 0:
                 input_c = tf.nn.dropout(input_c, keep_prob=1 - config.dropout_prob)
 
@@ -91,7 +92,7 @@ class LSTMLM(object):
             self.probs_c = []
 
             for t, _input_c in enumerate(input_c):
-                if t>0:
+                if t > 0:
                     tf.get_variable_scope().reuse_variables()
                 output_r, state_c = self.lstm(_input_c, state_r, output_dropout=lstm_dropout)
                 logit_r = tf.matmul(output_r, softmax_w_r) + softmax_b_r
@@ -114,24 +115,22 @@ class LSTMLM(object):
 
             self.final_state = state_r
 
-            logits_r = tf.reshape(tf.concat(1, logits_r), [-1, vocab_size])
-            logits_c = tf.reshape(tf.concat(1, logits_c), [-1, vocab_size])
+            logits_r = tf.reshape(tf.concat(logits_r, 1), [-1, vocab_size])
+            logits_c = tf.reshape(tf.concat(logits_c, 1), [-1, vocab_size])
 
-            self.probs_r = tf.reshape(tf.concat(1, self.probs_r), [-1, vocab_size])
-            self.probs_c = tf.reshape(tf.concat(1, self.probs_c), [-1, vocab_size])
-
+            self.probs_r = tf.reshape(tf.concat(self.probs_r, 1), [-1, vocab_size])
+            self.probs_c = tf.reshape(tf.concat(self.probs_c, 1), [-1, vocab_size])
 
             # Loss
-            labels = tf.reshape(self.targets, [-1,2])
-            label_r = labels[:,0]
-            label_c = labels[:,1]
+            labels = tf.reshape(self.targets, [-1, 2])
+            label_r = labels[:, 0]
+            label_c = labels[:, 1]
 
-            self.loss_r = tf.nn.sparse_softmax_cross_entropy_with_logits(logits_r, label_r)
-            self.loss_c = tf.nn.sparse_softmax_cross_entropy_with_logits(logits_c, label_c)
+            self.loss_r = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=label_r, logits=logits_r)
+            self.loss_c = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=label_c, logits=logits_c)
 
-            #self.loss = [self.loss_r, self.loss_c]
+            # self.loss = [self.loss_r, self.loss_c]
             self.loss = [(self.loss_r[i] + self.loss_c[i]) for i in range(batch_size * step_size)]
-
 
             training_losses = self.loss
 
@@ -139,11 +138,13 @@ class LSTMLM(object):
 
             if self.is_training:
                 self.lr = tf.Variable(0.0, trainable=False)
-                optimizer = tf.train.AdagradOptimizer(self.lr, config.adagrad_eps)
+                # optimizer = tf.train.AdagradOptimizer(self.lr, config.adagrad_eps)
+                optimizer = tf.train.GradientDescentOptimizer(self.lr)
                 tvars = tf.trainable_variables()
                 grads = tf.gradients([tf.reduce_sum(loss) / batch_size for loss in training_losses],
-                    tvars)
-                grads = [tf.clip_by_norm(grad, config.max_grad_norm) if grad is not None else grad for grad in grads]
+                                     tvars)
+                grads = [tf.clip_by_norm(grad, config.max_grad_norm) if grad is not None else grad for grad in
+                         grads]
                 self.eval_op = optimizer.apply_gradients(zip(grads, tvars))
             else:
                 self.eval_op = tf.no_op()

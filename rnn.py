@@ -29,20 +29,20 @@ class MultiLSTM(object):
         for layer in range(self._layers):
             cur_state = tf.slice(state, [0, self._lstm_size * 2 * layer], \
                 [-1, self._lstm_size * 2])
-            c, h = tf.split(1, 2, cur_state)
+            c, h = tf.split(cur_state, 2, 1)
             if input_dropout is not None and input_dropout > 0:
                 cur_inputs = tf.nn.dropout(cur_inputs, 1. - input_dropout)
-            concat = tf.matmul(tf.concat(1, [cur_inputs, h]), self._matrix[layer]) + \
+            concat = tf.matmul(tf.concat([cur_inputs, h], 1), self._matrix[layer]) + \
                 self._bias[layer]
 
-            i, j, f, o = tf.split(1, 4, concat)
+            i, j, f, o = tf.split(concat, 4, 1)
             new_c = (c * tf.sigmoid(f + self._forget_bias) + 
                 tf.sigmoid(i) * self._activation(j))
 
             cur_inputs = self._activation(new_c) * tf.sigmoid(o) # cur_inputs = new_h
-            new_states.append(tf.concat(1, [new_c, cur_inputs]))
+            new_states.append(tf.concat([new_c, cur_inputs], 1))
             if output_dropout is not None and output_dropout > 0:
                cur_inputs = tf.nn.dropout(cur_inputs, 1. - output_dropout) 
 
-        new_states = tf.concat(1, new_states)
+        new_states = tf.concat(new_states, 1)
         return cur_inputs, new_states
